@@ -214,6 +214,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -1613,14 +1614,15 @@ async function switchSubjectTab(tabName) {
 }
 
 function renderQuestionsTab() {
-// --- PENGURUTAN BARU BERDASARKAN CAP WAKTU (BANK SOAL) ---
     const sortedQuestions = [...state.questions].sort((a, b) => {
-        const timeA = a.createdAt || 0; // Gunakan 0 jika data lama tidak punya cap waktu
+        const timeA = a.createdAt || 0; 
         const timeB = b.createdAt || 0;
-        return timeA - timeB; // Urutkan dari yang terlama (awal) ke terbaru (akhir)
+        return timeA - timeB; 
     });
     $('#subject-content').innerHTML = `
-        <div class="flex justify-end mb-4 gap-2">
+        <div class="flex flex-wrap justify-end mb-4 gap-2">
+            <button onclick="handleDownloadQuestionsModal()" class="neon-glow-button font-bold py-2 px-4 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/50 hover:bg-blue-600 hover:text-white"><i class="fas fa-download mr-2"></i>Download Soal</button>
+            
             <button onclick="handleImportQuestions()" class="neon-glow-button neon-glow-secondary font-bold py-2 px-4 rounded-lg"><i class="fas fa-file-upload mr-2"></i>Import Soal</button>
             <button onclick="handleAddQuestion()" class="neon-glow-button font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Tambah Soal</button>
         </div>
@@ -1629,7 +1631,6 @@ function renderQuestionsTab() {
         </div>
     `;
     
-    // Panggil loadDynamicImages versi Google Drive
     setTimeout(loadDynamicImages, 0);
 }
 
@@ -5118,7 +5119,213 @@ function urutkanTabelMonitoring() {
     // Susun ulang baris ke dalam tabel (otomatis memindahkan, bukan menggandakan)
     barisSiswa.forEach(baris => tableBody.appendChild(baris));
 }
-      
+
+		/**
+ * ==========================================================
+ * FITUR DOWNLOAD SOAL (PDF & EXCEL BACKUP)
+ * ==========================================================
+ */
+
+function handleDownloadQuestionsModal() {
+    const bodyHtml = `
+        <div class="space-y-4 text-center">
+            <p class="text-gray-300 mb-6">Pilih format unduhan untuk soal <strong>${state.currentSubject.name}</strong>:</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="downloadQuestionsPDF()" class="w-full neon-glow-button font-bold py-4 px-4 rounded-lg bg-red-600/20 text-red-400 border border-red-500/50 hover:bg-red-600 hover:text-white flex flex-col items-center gap-3 transition-all">
+                    <i class="fas fa-file-pdf text-4xl"></i>
+                    <span>Format PDF (Siap Print)</span>
+                </button>
+                <button onclick="downloadQuestionsExcel(this)" class="w-full neon-glow-button font-bold py-4 px-4 rounded-lg bg-green-600/20 text-green-400 border border-green-500/50 hover:bg-green-600 hover:text-white flex flex-col items-center gap-3 transition-all">
+                    <i class="fas fa-file-excel text-4xl"></i>
+                    <span>Format Excel (Backup/Import)</span>
+                </button>
+            </div>
+        </div>
+    `;
+    showModal('Download Soal', bodyHtml, () => {}, { hideAction: true, actionText: '' });
+}
+
+function downloadQuestionsPDF() {
+    hideModal();
+    const questions = getSortedQuestions();
+    if(questions.length === 0) {
+        showNotification('Info', 'Belum ada soal untuk dicetak.', 'info');
+        return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write('<html><head><title>Naskah Soal - ' + state.currentSubject.name + '</title>');
+    printWindow.document.write(`
+        <style>
+            body { font-family: Arial, sans-serif; margin: 30px; font-size: 14px; color: #000; line-height: 1.5; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            .header { text-align: center; border-bottom: 3px solid black; padding-bottom: 10px; margin-bottom: 30px; }
+            .header h2 { margin: 0 0 5px 0; font-size: 18pt; text-transform: uppercase; }
+            .header h3 { margin: 0; font-size: 14pt; font-weight: normal; }
+            .soal-item { margin-bottom: 25px; page-break-inside: avoid; }
+            .soal-teks { font-weight: bold; margin-bottom: 8px; display: flex; gap: 8px;}
+            .soal-nomor { width: 25px; flex-shrink: 0; }
+            .soal-konten { flex-grow: 1; }
+            .media-soal { max-width: 300px; max-height: 250px; display: block; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
+            .opsi-list { list-style-type: upper-alpha; margin: 8px 0 8px 20px; padding-left: 15px; }
+            .opsi-list li { margin-bottom: 5px; }
+            .media-opsi { max-height: 60px; vertical-align: middle; margin-left: 10px; }
+            table.menjodohkan { width: 90%; margin-top: 10px; border-collapse: collapse; margin-left: 30px;}
+            table.menjodohkan td { border: 1px solid #000; padding: 5px 10px; }
+            .kunci-jawaban { font-style: italic; font-weight: bold; margin-top: 10px; margin-left: 33px; color: #b91c1c; border-left: 3px solid #b91c1c; padding-left: 10px;}
+        </style>
+    `);
+    printWindow.document.write('</head><body>');
+    printWindow.document.write(`
+        <div class="header">
+            <h2>NASKAH SOAL UJIAN</h2>
+            <h3>Mata Pelajaran: <strong>${state.currentSubject.name}</strong></h3>
+        </div>
+    `);
+
+    questions.forEach((q, idx) => {
+        printWindow.document.write(`<div class="soal-item">`);
+        printWindow.document.write(`
+            <div class="soal-teks">
+                <div class="soal-nomor">${idx + 1}.</div>
+                <div class="soal-konten">${q.text}</div>
+            </div>
+        `);
+        
+        if (q.mediaUrl) {
+            printWindow.document.write(`<img src="${buildDriveUrl(q.mediaUrl)}" class="media-soal" style="margin-left:33px;">`);
+        }
+
+        if (['Pilihan Ganda', 'Pilihan Ganda Kompleks'].includes(q.type)) {
+            printWindow.document.write(`<ol class="opsi-list" style="margin-left: 15px;">`);
+            (q.options||[]).forEach(opt => {
+                let optHtml = opt.text || '';
+                if(opt.img) optHtml += `<img src="${buildDriveUrl(opt.img)}" class="media-opsi">`;
+                printWindow.document.write(`<li>${optHtml}</li>`);
+            });
+            printWindow.document.write(`</ol>`);
+        } else if (q.type === 'Menjodohkan') {
+            printWindow.document.write(`<table class="menjodohkan">`);
+            (q.options||[]).forEach((pair, pIdx) => {
+                printWindow.document.write(`
+                    <tr>
+                        <td width="5%">${String.fromCharCode(65 + pIdx)}.</td>
+                        <td width="45%">${pair.q?.text||''}</td>
+                        <td width="5%">➔</td>
+                        <td width="45%">${pair.a?.text||''}</td>
+                    </tr>
+                `);
+            });
+            printWindow.document.write(`</table>`);
+        }
+
+        let answerStr = Array.isArray(q.answer) ? q.answer.join(', ') : (q.answer || '-');
+        if (q.type === 'Menjodohkan') answerStr = "Tabel pasangan di atas.";
+        else if (q.type === 'Isian Singkat' && Array.isArray(q.answer)) answerStr = q.answer.join('; ');
+        
+        printWindow.document.write(`<div class="kunci-jawaban">Kunci Jawaban: ${answerStr}</div>`);
+        printWindow.document.write(`</div>`);
+    });
+
+    printWindow.document.write('</body></html>');
+    printWindow.document.close();
+    
+    setTimeout(() => { 
+        printWindow.focus();
+        printWindow.print();
+    }, 1500);
+}
+
+async function downloadQuestionsExcel(btnElement) {
+    const questions = getSortedQuestions();
+    if(questions.length === 0) {
+        showNotification('Kosong', 'Belum ada soal untuk diexport.', 'info');
+        return;
+    }
+
+    const originalContent = btnElement.innerHTML;
+    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin text-4xl"></i><span>Sedang Memproses...</span>';
+    btnElement.disabled = true;
+
+    try {
+        // 1. Siapkan Kop/Header (Sama persis seperti template asli Bapak)
+        const dummyHeaders = [
+            ["TEMPLATE IMPORT SOAL - " + state.currentSubject.name],
+            ["Jangan hapus 7 baris pertama ini!"],
+            [""], [""], [""], [""],
+            [
+                "Tipe Soal", "Teks Soal", 
+                "Opsi 1 / Item 1", "Opsi 2 / Item 2", "Opsi 3 / Item 3", "Opsi 4 / Item 4", "Opsi 5 / Item 5", 
+                "Pasangan 1", "Pasangan 2", "Pasangan 3", "Pasangan 4", "Pasangan 5", 
+                "Kunci Jawaban", "URL Gambar"
+            ]
+        ];
+
+        // 2. Siapkan Baris Soalnya
+        const dataRows = questions.map(q => {
+            const row = Array(14).fill(""); 
+            row[0] = q.type;
+            
+            // Bersihkan teks soal dari kode-kode HTML agar rapi di Excel
+            let rawText = q.text || '';
+            rawText = rawText.replace(/<br\s*[\/]?>/gi, "\n").replace(/<[^>]+>/g, '');
+            row[1] = rawText; 
+            
+            if(['Pilihan Ganda', 'Pilihan Ganda Kompleks'].includes(q.type)) {
+                (q.options||[]).forEach((opt, idx) => {
+                    if(idx < 5) row[2 + idx] = opt.text; 
+                });
+            } else if(q.type === 'Menjodohkan') {
+                (q.options||[]).forEach((pair, idx) => {
+                    if(idx < 5) {
+                        row[2 + idx] = pair.q?.text || ""; 
+                        row[7 + idx] = pair.a?.text || ""; 
+                    }
+                });
+            }
+
+            if (q.type === 'Pilihan Ganda') {
+                row[12] = q.answer || '';
+            } else if (q.type === 'Pilihan Ganda Kompleks') {
+                row[12] = Array.isArray(q.answer) ? q.answer.join(',') : (q.answer || '');
+            } else if (q.type === 'Isian Singkat') {
+                row[12] = Array.isArray(q.answer) ? q.answer.join(';') : (q.answer || '');
+            } else if (q.type === 'Menjodohkan') {
+                row[12] = "Otomatis";
+            } else {
+                row[12] = q.answer || '';
+            }
+
+            row[13] = q.mediaUrl || '';
+            return row;
+        });
+
+        // 3. Gabungkan Header dan Soal
+        const allRows = [...dummyHeaders, ...dataRows];
+
+        // 4. Proses menjadi File .xlsx secara ajaib di Browser!
+        const ws = XLSX.utils.aoa_to_sheet(allRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Backup Soal");
+
+        // Nama file otomatis rapi tanpa spasi aneh
+        const safeName = state.currentSubject.name.replace(/[^a-zA-Z0-9 ]/g, "").substring(0, 20);
+        
+        // 5. Unduh langsung ke laptop Bapak!
+        XLSX.writeFile(wb, `Backup_Soal_${safeName}.xlsx`);
+
+        hideModal(); 
+        showNotification('Sukses', 'File Excel Backup berhasil diunduh ke perangkat Anda!', 'success');
+        
+    } catch (e) {
+        console.error(e);
+        showNotification('Gagal Export', e.message, 'error');
+    } finally {
+        btnElement.innerHTML = originalContent;
+        btnElement.disabled = false;
+    }
+}
+		
     </script>
 </body>
 </html>
