@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+	<meta name="referrer" content="no-referrer">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ujian Online CBT V3</title>
@@ -445,20 +446,25 @@ const auth = firebase.auth(); // Pintasan untuk Autentikasi
  */
 function buildDriveUrl(fileId) {
     if (!fileId) return "";
-    // Format "Pintu Samping" yang baru dan lebih baik
-    return `https://lh3.googleusercontent.com/d/${fileId}`;
+    
+    // Ekstrak ID-nya saja agar bersih dari embel-embel link lain
+    let cleanId = fileId;
+    const match = fileId.match(/[-\w]{25,}/);
+    if (match && match[0]) {
+        cleanId = match[0];
+    }
+
+    // Trik "Pintu Samping" Google
+    return `https://lh3.googleusercontent.com/d/${cleanId}`;
 }
 // =================================================================
 
 // FUNGSI GLOBAL UNTUK MERENDER OPSI JAWABAN (VERSI DRIVE LANGSUNG)
 function renderOption(opt) {
     if (typeof opt === 'object' && opt !== null) {
-        // --- PERUBAHAN DI SINI ---
-        // Kita sekarang menggunakan <img> SRC secara langsung.
         const mediaHtml = opt.img
             ? `<img src="${buildDriveUrl(opt.img.trim())}" class="option-media-embed" alt="Memuat media opsi..." loading="lazy">`
             : '';
-        // --- AKHIR PERUBAHAN ---
 
         return `
             <div class="flex items-center gap-2">
@@ -2198,14 +2204,20 @@ function handlePrint() {
 
 // GANTI FUNGSI renderQuestionModal LAMA ANDA DENGAN INI
 
-function renderQuestionModal(question = null, insertTimestamp = null) { // <-- Perubahan di sini
+function renderQuestionModal(question = null, insertTimestamp = null) {
     const isEdit = question !== null;
     const title = isEdit ? `Edit Soal #${getSortedQuestions().findIndex(q => q.id === question.id) + 1}` : 'Tambah Soal Baru';
 
+    // Menambahkan preview gambar di kotak modal
+    const safeMediaUrl = isEdit && question.mediaUrl ? buildDriveUrl(question.mediaUrl) : '';
     const mainMediaPreviewHtml = isEdit && question.mediaUrl
-        ? `<div class="mt-2 text-xs text-gray-400">Media saat ini: 
-             <a href="javascript:void(0)" onclick="previewMediaInNewTab('${question.mediaUrl}')" class="text-fuchsia-400 hover:underline">Lihat Media</a>
-             <br><em class="text-gray-400">Upload file baru untuk menggantinya.</em>
+        ? `<div class="mt-2 text-xs text-gray-400">
+             <p class="mb-2 font-bold">Media saat ini:</p>
+             <div class="my-2 p-2 bg-black/10 border border-fuchsia-500/30 rounded-lg text-center flex justify-center">
+                 <img src="${safeMediaUrl}" class="max-h-40 mx-auto rounded shadow border border-gray-300" alt="Preview Media" loading="lazy">
+             </div>
+             <a href="javascript:void(0)" onclick="previewMediaInNewTab('${question.mediaUrl}')" class="text-fuchsia-400 hover:underline inline-block mt-1"><i class="fas fa-external-link-alt mr-1"></i>Buka Layar Penuh</a>
+             <br><em class="text-gray-400 mt-2 inline-block">Upload file baru untuk menggantinya.</em>
            </div>`
         : '';
     
@@ -2342,9 +2354,14 @@ function addQuestionOption(value = { text: '', img: '' }, correctAnswer = null) 
     const letter = String.fromCharCode(65 + index);
     const isChecked = correctAnswer ? (Array.isArray(correctAnswer) ? correctAnswer.includes(letter) : correctAnswer === letter) : false;
 
-    // Link "Lihat Gambar" sekarang memanggil previewMediaInNewTab
+    // Menambahkan preview gambar untuk opsi jawaban
+    const safeOptionImgUrl = value.img ? buildDriveUrl(value.img) : '';
     const previewLinkHtml = value.img 
-        ? `<div class="text-xs text-gray-400">Gambar saat ini: <a href="javascript:void(0)" onclick="previewMediaInNewTab('${value.img}')" class="text-fuchsia-400 hover:underline">Lihat Media</a></div>` 
+        ? `<div class="mt-2 text-xs text-gray-400 bg-black/10 p-2 rounded border border-gray-300 text-center">
+             <p class="mb-1 text-left font-bold">Gambar opsi saat ini:</p>
+             <img src="${safeOptionImgUrl}" class="max-h-20 mx-auto rounded shadow-sm mb-2" alt="Preview Opsi" loading="lazy">
+             <a href="javascript:void(0)" onclick="previewMediaInNewTab('${value.img}')" class="text-fuchsia-400 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>Layar Penuh</a>
+           </div>` 
         : '';
 
     newOption.className = 'option-row flex items-center gap-2 mb-2 p-2 border border-fuchsia-500/20 rounded-lg';
@@ -2361,6 +2378,7 @@ function addQuestionOption(value = { text: '', img: '' }, correctAnswer = null) 
     `;
     container.appendChild(newOption);
 }
+		
 function removeQuestionOption(btn) {
     btn.closest('.option-row').remove();
     reindexOptions();
