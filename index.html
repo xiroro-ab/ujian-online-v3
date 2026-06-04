@@ -33,8 +33,22 @@
             font-family: 'Fira Code', monospace;
             background-color: var(--bg-color) !important;
             color: var(--text-main) !important;
-            text-shadow: none !important; /* Menghilangkan efek glow pada teks */
+            text-shadow: none !important;
             font-size: 14px; 
+            /* BLOKIR SELEKSI TEKS & COPY PASTE */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        /* Izinkan kotak input untuk tetap bisa diketik */
+        input, textarea {
+            -webkit-user-select: auto !important;
+            -moz-user-select: auto !important;
+            -ms-user-select: auto !important;
+            user-select: auto !important;
         }
 
         /* --- OVERRIDE TEMA NEON MENJADI MODERN FLAT --- */
@@ -3629,74 +3643,87 @@ const triggerCheatWarning = () => {
         timerDisplay.textContent = ''; 
     }, 5000); // Selalu 5 detik penuh
 };
+		
 const handleVisibilityChange = () => {
     if (document.hidden) {
-        handleViolation();
+        handleViolation("Berpindah tab atau menyembunyikan browser.");
     }
 };
+
 const handleFullscreenChange = () => {
-    // Cek apakah elemen fullscreen hilang?
     const isFullscreenNow = document.fullscreenElement || document.webkitFullscreenElement;
-    
-    // Syarat Pelanggaran:
-    // 1. Tidak Fullscreen (!isFullscreenNow)
-    // 2. Sedang Ujian (isDuringExam) <-- PENTING
-    // 3. Data Ujian Ada (state.currentExam)
-    // 4. Ujian Belum Selesai (!state.currentExam.isFinished)
-    
     if (!isFullscreenNow && isDuringExam && state.currentExam && !state.currentExam.isFinished) {
         handleViolation("Keluar dari mode layar penuh (Fullscreen).");
     }
 };
+
 const preventCopyPaste = (e) => {
-        if (e.ctrlKey && ['c', 'v', 'x', 'u', 'p'].includes(e.key.toLowerCase())) {
-            e.preventDefault();
-            showNotification('Aksi Diblokir', 'Menyalin dan menempel tidak diizinkan selama ujian.', 'error');
+    if (e.ctrlKey && ['c', 'v', 'x', 'u', 'p'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        if (isDuringExam && state.currentExam) {
+            handleViolation("Mencoba menggunakan tombol pintas (Copy/Paste).");
+        }
     }
 };
-const preventContextMenu = (e) => e.preventDefault();
+
+const preventContextMenu = (e) => {
+    e.preventDefault();
+    if (isDuringExam && state.currentExam) {
+        handleViolation("Mencoba klik kanan pada layar.");
+    }
+};
+
+const preventCopyEvent = (e) => {
+    e.preventDefault();
+    if (isDuringExam && state.currentExam) {
+        handleViolation("Mencoba menyalin (copy) teks soal.");
+    }
+};
+
 function addAntiCheatListeners() {
     if (!state.currentExam) return;
     state.currentExam.cheatAttempts = state.currentExam.cheatAttempts || 0;
     
+    // Pasang semua jebakan curang
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('contextmenu', preventContextMenu);
     document.addEventListener('keydown', preventCopyPaste);
+    document.addEventListener('copy', preventCopyEvent);
 
-    // --- LOGIKA BARU YANG LEBIH RAPI ---
-    
-    // 1. Definisikan fungsi listener-nya
     state.examBlurListener = () => {
         if (!state.currentExam || !isDuringExam) return;
         const sessionRef = db.ref(`/examSessions/${state.currentExam.studentId}_${state.currentExam.subjectId}`);
         sessionRef.update({ isFocus: false });
+        
+        // --- INI PERBAIKANNYA: BLUR OVERLAY LANGSUNG DITILANG ---
+        handleViolation("Layar tertutup (Overlay Asisten Google/Kamus/Layar Terbelah).");
     };
+    
     state.examFocusListener = () => {
         if (!state.currentExam || !isDuringExam) return;
         const sessionRef = db.ref(`/examSessions/${state.currentExam.studentId}_${state.currentExam.subjectId}`);
         sessionRef.update({ isFocus: true });
     };
     
-    // 2. Tambahkan listener menggunakan referensi yang disimpan
     window.addEventListener('blur', state.examBlurListener);
     window.addEventListener('focus', state.examFocusListener);
 }
+
 function removeAntiCheatListeners() {
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     document.removeEventListener('fullscreenchange', handleFullscreenChange);
     document.removeEventListener('contextmenu', preventContextMenu);
     document.removeEventListener('keydown', preventCopyPaste);
+    document.removeEventListener('copy', preventCopyEvent);
     
-    // --- LOGIKA BARU (YANG SEBENARNYA) ---
-    // Hapus listener 'blur' dan 'focus' menggunakan referensi yang disimpan
     if (state.examBlurListener) {
         window.removeEventListener('blur', state.examBlurListener);
-        state.examBlurListener = null; // Bersihkan state
+        state.examBlurListener = null; 
     }
     if (state.examFocusListener) {
         window.removeEventListener('focus', state.examFocusListener);
-        state.examFocusListener = null; // Bersihkan state
+        state.examFocusListener = null; 
     }
 }
 
